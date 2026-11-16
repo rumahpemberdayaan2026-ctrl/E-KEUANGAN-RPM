@@ -544,9 +544,38 @@
 
         let transactions = [];
         let isInitialSeedChecked = false;
+        let isCloudReady = false;
+        const LOCAL_STORAGE_KEY = 'rpm_pembukuan_transactions_v1';
+
+        function loadLocalTransactions() {
+            try {
+                const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+                if (saved) {
+                    transactions = JSON.parse(saved);
+                } else {
+                    transactions = [...defaultTransactions];
+                    saveLocalTransactions();
+                }
+            } catch (e) {
+                transactions = [...defaultTransactions];
+            }
+            renderTransactions();
+        }
+
+        function saveLocalTransactions() {
+            try {
+                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(transactions));
+            } catch (e) {
+                console.warn("Local storage save warning:", e);
+            }
+        }
 
         async function initCloudDatabase() {
+            // Load local data immediately so app is 100% usable right away
+            loadLocalTransactions();
+
             if (!firebaseConfig) {
+                isCloudReady = false;
                 updateCloudBadge(false);
                 return;
             }
@@ -561,10 +590,14 @@
                     await signInAnonymously(auth);
                 }
                 currentUser = auth.currentUser;
-                updateCloudBadge(true);
-                listenToTransactions();
+                isCloudReady = Boolean(db && currentUser);
+                updateCloudBadge(isCloudReady);
+                if (isCloudReady) {
+                    listenToTransactions();
+                }
             } catch (error) {
                 console.error("Cloud connection error:", error);
+                isCloudReady = false;
                 updateCloudBadge(false);
             }
         }
@@ -574,10 +607,10 @@
             if (!badge) return;
             if (isOnline) {
                 badge.className = "hidden md:flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-semibold";
-                badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span><span>Tersimpan di Cloud</span>';
+                badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span><span>Tersimpan di Cloud & Lokal</span>';
             } else {
-                badge.className = "hidden md:flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-[11px] font-semibold";
-                badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-amber-500"></span><span>Mode Offline</span>';
+                badge.className = "hidden md:flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-sky-50 border border-sky-200 text-sky-700 text-[11px] font-semibold";
+                badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-sky-500"></span><span>Tersimpan di Perangkat</span>';
             }
         }
 
@@ -594,18 +627,20 @@
 
                 if (fetched.length === 0 && !isInitialSeedChecked) {
                     isInitialSeedChecked = true;
-                    // Seed default initial transactions once if empty
-                    for (const item of defaultTransactions) {
+                    // Sync existing local data to cloud
+                    for (const item of transactions) {
                         await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rpm_transactions', item.id), item);
                     }
                 } else {
                     isInitialSeedChecked = true;
                     transactions = fetched;
+                    saveLocalTransactions();
                     renderTransactions();
                 }
             }, (error) => {
                 console.error("Snapshot error:", error);
-                showToast("Gagal menyinkronkan data cloud.", "info");
+                isCloudReady = false;
+                updateCloudBadge(false);
             });
         }
 
@@ -762,10 +797,6 @@
 
         window.saveDonation = async function(e) {
             e.preventDefault();
-            if (!db || !currentUser) {
-                showToast('Koneksi cloud belum siap, silakan tunggu sebentar.', 'info');
-                return;
-            }
 
             const id = 'DON-' + Date.now().toString();
             const date = document.getElementById('donDate').value;
@@ -788,14 +819,21 @@
                 paymentMethod
             };
 
-            try {
-                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rpm_transactions', id), payload);
-                closeDonationModal();
-                showToast('Donasi berhasil disimpan ke Cloud!', 'success');
-                showReceiptModal(payload);
-            } catch (err) {
-                console.error("Save donation error:", err);
-                showToast('Gagal menyimpan data donasi.', 'info');
+            // Save locally first so it always works immediately
+            transactions.push(payload);
+            saveLocalTransactions();
+            renderTransactions();
+            closeDonationModal();
+            showToast('Donasi berhasil disimpan!', 'success');
+            showReceiptModal(payload);
+
+            // Also sync to cloud if online
+            if (isCloudReady && db && currentUser) {
+                try {
+                    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rpm_transactions', id), payload);
+                } catch (err) {
+                    console.warn("Cloud sync delayed:", err);
+                }
             }
         };
 
@@ -998,10 +1036,6 @@
 
         window.saveTransaction = async function(e) {
             e.preventDefault();
-            if (!db || !currentUser) {
-                showToast('Koneksi cloud belum siap, silakan tunggu sebentar.', 'info');
-                return;
-            }
 
             const existingId = document.getElementById('transId').value;
             const id = existingId || Date.now().toString();
@@ -1011,15 +1045,26 @@
             const amount = parseFloat(document.getElementById('transAmount').value);
             const description = document.getElementById('transDescription').value;
 
-            const payload = { id, type, date, category, amount, description };
+            const existingItem = existingId ? transactions.find(t => t.id === existingId) : null;
+            const payload = { ...(existingItem || {}), id, type, date, category, amount, description };
 
-            try {
-                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rpm_transactions', id), payload);
-                closeTransactionModal();
-                showToast(existingId ? 'Transaksi berhasil diperbarui di Cloud!' : 'Transaksi berhasil disimpan permanen di Cloud!', 'success');
-            } catch (err) {
-                console.error("Save error:", err);
-                showToast('Gagal menyimpan ke cloud.', 'info');
+            if (existingId) {
+                const idx = transactions.findIndex(t => t.id === existingId);
+                if (idx !== -1) transactions[idx] = payload;
+            } else {
+                transactions.push(payload);
+            }
+            saveLocalTransactions();
+            renderTransactions();
+            closeTransactionModal();
+            showToast(existingId ? 'Transaksi berhasil diperbarui!' : 'Transaksi berhasil disimpan!', 'success');
+
+            if (isCloudReady && db && currentUser) {
+                try {
+                    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rpm_transactions', id), payload);
+                } catch (err) {
+                    console.warn("Cloud sync delayed:", err);
+                }
             }
         };
 
@@ -1031,14 +1076,18 @@
         };
 
         window.deleteTransaction = function(id) {
-            openConfirmModal('Apakah Anda yakin ingin menghapus catatan transaksi ini dari Cloud?', async () => {
-                if (!db || !currentUser) return;
-                try {
-                    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rpm_transactions', id));
-                    showToast('Transaksi berhasil dihapus.', 'info');
-                } catch (err) {
-                    console.error("Delete error:", err);
-                    showToast('Gagal menghapus transaksi.', 'info');
+            openConfirmModal('Apakah Anda yakin ingin menghapus catatan transaksi ini?', async () => {
+                transactions = transactions.filter(t => t.id !== id);
+                saveLocalTransactions();
+                renderTransactions();
+                showToast('Transaksi berhasil dihapus.', 'info');
+
+                if (isCloudReady && db && currentUser) {
+                    try {
+                        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rpm_transactions', id));
+                    } catch (err) {
+                        console.warn("Cloud delete delayed:", err);
+                    }
                 }
             });
         };
@@ -1144,15 +1193,19 @@
                         const date = row["Tanggal"] || new Date().toISOString().split('T')[0];
                         const category = row["Kategori"] || (type === 'pemasukan' ? 'Lain-lain (Pemasukan)' : 'Lain-lain (Pengeluaran)');
                         const id = (Date.now() + importedCount).toString();
+                        const item = { id, date, type, category, amount, description: String(desc) };
 
-                        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rpm_transactions', id), {
-                            id, date, type, category, amount, description: String(desc)
-                        });
+                        transactions.push(item);
+                        if (isCloudReady && db && currentUser) {
+                            await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rpm_transactions', id), item);
+                        }
                         importedCount++;
                     }
 
+                    saveLocalTransactions();
+                    renderTransactions();
                     closeBackupModal();
-                    showToast(`${importedCount} data dari Excel berhasil diimpor ke Cloud!`, 'success');
+                    showToast(`${importedCount} data dari Excel berhasil diimpor!`, 'success');
                 } catch (err) {
                     console.error("Excel import error:", err);
                     showToast('Gagal membaca file Excel. Pastikan format sesuai.', 'info');
@@ -1267,13 +1320,22 @@
                 fileReader.onload = async (e) => {
                     try {
                         const imported = JSON.parse(e.target.result);
-                        if (Array.isArray(imported) && db && currentUser) {
+                        if (Array.isArray(imported)) {
                             for (const item of imported) {
-                                const id = item.id || Date.now().toString();
-                                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rpm_transactions', id), { ...item, id });
+                                const id = item.id || Date.now().toString() + Math.random().toString(36).slice(2, 6);
+                                const record = { ...item, id };
+                                const existingIdx = transactions.findIndex(t => t.id === id);
+                                if (existingIdx !== -1) transactions[existingIdx] = record;
+                                else transactions.push(record);
+
+                                if (isCloudReady && db && currentUser) {
+                                    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rpm_transactions', id), record);
+                                }
                             }
+                            saveLocalTransactions();
+                            renderTransactions();
                             closeBackupModal();
-                            showToast('Data berhasil dipulihkan ke Cloud!', 'success');
+                            showToast('Data berhasil dipulihkan!', 'success');
                         } else {
                             showToast('Format file JSON tidak valid.', 'info');
                         }
@@ -1281,6 +1343,25 @@
                         showToast('Gagal membaca file JSON.', 'info');
                     }
                 };
+            }
+        };
+
+        window.executeResetData = async function() {
+            const oldTransactions = [...transactions];
+            transactions = [];
+            saveLocalTransactions();
+            renderTransactions();
+            closeBackupModal();
+            showToast('Semua data telah direset.', 'info');
+
+            if (isCloudReady && db && currentUser) {
+                try {
+                    for (const item of oldTransactions) {
+                        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rpm_transactions', item.id));
+                    }
+                } catch (err) {
+                    console.warn("Cloud reset delayed:", err);
+                }
             }
         };
 
