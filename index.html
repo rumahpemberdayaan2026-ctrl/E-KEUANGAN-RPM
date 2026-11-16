@@ -500,19 +500,7 @@
     </div>
 
     <!-- JAVASCRIPT LOGIC -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, deleteDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        // Firebase Initialization
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'rpm-pembukuan-app';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
-        let db = null;
-        let auth = null;
-        let currentUser = null;
-        let unsubscribeSnapshot = null;
-
+    <script>
         // Categories definition
         const categories = {
             pemasukan: [
@@ -534,7 +522,7 @@
             ]
         };
 
-        // Default initial data if cloud is completely empty on first run
+        // Default initial data on first run
         const defaultTransactions = [
             { id: "init_1", date: "2026-06-01", type: "pemasukan", category: "Dana Hibah / Pemerintah", amount: 15000000, description: "Bantuan Operasional Pemberdayaan Masyarakat Triwulan II" },
             { id: "init_2", date: "2026-06-03", type: "pemasukan", category: "Donasi Tunai / Tetap", amount: 2500000, description: "Donasi hamba Allah untuk pelatihan komputer" },
@@ -543,8 +531,6 @@
         ];
 
         let transactions = [];
-        let isInitialSeedChecked = false;
-        let isCloudReady = false;
         const LOCAL_STORAGE_KEY = 'rpm_pembukuan_transactions_v1';
 
         function loadLocalTransactions() {
@@ -570,83 +556,17 @@
             }
         }
 
-        async function initCloudDatabase() {
-            // Load local data immediately so app is 100% usable right away
-            loadLocalTransactions();
-
-            if (!firebaseConfig) {
-                isCloudReady = false;
-                updateCloudBadge(false);
-                return;
-            }
-            try {
-                const app = initializeApp(firebaseConfig);
-                auth = getAuth(app);
-                db = getFirestore(app);
-
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
-                currentUser = auth.currentUser;
-                isCloudReady = Boolean(db && currentUser);
-                updateCloudBadge(isCloudReady);
-                if (isCloudReady) {
-                    listenToTransactions();
-                }
-            } catch (error) {
-                console.error("Cloud connection error:", error);
-                isCloudReady = false;
-                updateCloudBadge(false);
-            }
-        }
-
-        function updateCloudBadge(isOnline) {
+        function updateStorageBadge() {
             const badge = document.getElementById('cloudStatusBadge');
             if (!badge) return;
-            if (isOnline) {
-                badge.className = "hidden md:flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-semibold";
-                badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span><span>Tersimpan di Cloud & Lokal</span>';
-            } else {
-                badge.className = "hidden md:flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-sky-50 border border-sky-200 text-sky-700 text-[11px] font-semibold";
-                badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-sky-500"></span><span>Tersimpan di Perangkat</span>';
-            }
-        }
-
-        function listenToTransactions() {
-            if (!db || !currentUser) return;
-            const colRef = collection(db, 'artifacts', appId, 'public', 'data', 'rpm_transactions');
-            
-            if (unsubscribeSnapshot) unsubscribeSnapshot();
-            unsubscribeSnapshot = onSnapshot(colRef, async (snapshot) => {
-                const fetched = [];
-                snapshot.forEach(docSnap => {
-                    fetched.push({ id: docSnap.id, ...docSnap.data() });
-                });
-
-                if (fetched.length === 0 && !isInitialSeedChecked) {
-                    isInitialSeedChecked = true;
-                    // Sync existing local data to cloud
-                    for (const item of transactions) {
-                        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rpm_transactions', item.id), item);
-                    }
-                } else {
-                    isInitialSeedChecked = true;
-                    transactions = fetched;
-                    saveLocalTransactions();
-                    renderTransactions();
-                }
-            }, (error) => {
-                console.error("Snapshot error:", error);
-                isCloudReady = false;
-                updateCloudBadge(false);
-            });
+            badge.className = "hidden md:flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-semibold";
+            badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span><span>Tersimpan Permanen</span>';
         }
 
         // Check auth status on load
-        window.addEventListener('DOMContentLoaded', async () => {
-            await initCloudDatabase();
+        window.addEventListener('DOMContentLoaded', () => {
+            loadLocalTransactions();
+            updateStorageBadge();
             const isLoggedIn = sessionStorage.getItem('rpm_admin_logged');
             if (isLoggedIn === 'true') {
                 showApp();
@@ -664,7 +584,7 @@
                 sessionStorage.setItem('rpm_admin_logged', 'true');
                 errorEl.classList.add('hidden');
                 showApp();
-                showToast('Login berhasil! Data tersinkronisasi di Cloud.', 'success');
+                showToast('Login berhasil! Selamat datang Admin.', 'success');
             } else {
                 errorEl.classList.remove('hidden');
                 document.getElementById('adminPasswordInput').focus();
@@ -673,15 +593,8 @@
 
         window.handleLogout = function() {
             sessionStorage.removeItem('rpm_admin_logged');
-            document.getElementById('adminPasswordInput').value = '';
             showLogin();
-            showToast('Anda telah keluar dari sistem.', 'info');
         };
-
-        function showLogin() {
-            document.getElementById('loginScreen').classList.remove('hidden');
-            document.getElementById('appContainer').classList.add('hidden');
-        }
 
         function showApp() {
             document.getElementById('loginScreen').classList.add('hidden');
@@ -690,11 +603,18 @@
             renderTransactions();
         }
 
+        function showLogin() {
+            document.getElementById('loginScreen').classList.remove('hidden');
+            document.getElementById('appContainer').classList.add('hidden');
+            document.getElementById('adminPasswordInput').value = '';
+        }
+
+        // Populate filter dropdown
         function populateCategoryFilters() {
             const filterCat = document.getElementById('filterCategory');
             filterCat.innerHTML = '<option value="all">Semua Kategori</option>';
             
-            const allCats = [...new Set([...categories.pemasukan, ...categories.pengeluaran])];
+            const allCats = [...categories.pemasukan, ...categories.pengeluaran];
             allCats.forEach(cat => {
                 const opt = document.createElement('option');
                 opt.value = cat;
@@ -703,11 +623,12 @@
             });
         }
 
+        // Update category options in modal based on type
         window.updateCategoryOptions = function() {
             const type = document.getElementById('transType').value;
             const catSelect = document.getElementById('transCategory');
             catSelect.innerHTML = '';
-            
+
             categories[type].forEach(cat => {
                 const opt = document.createElement('option');
                 opt.value = cat;
@@ -795,7 +716,7 @@
             document.getElementById('donationModal').classList.add('hidden');
         };
 
-        window.saveDonation = async function(e) {
+        window.saveDonation = function(e) {
             e.preventDefault();
 
             const id = 'DON-' + Date.now().toString();
@@ -819,22 +740,12 @@
                 paymentMethod
             };
 
-            // Save locally first so it always works immediately
             transactions.push(payload);
             saveLocalTransactions();
             renderTransactions();
             closeDonationModal();
             showToast('Donasi berhasil disimpan!', 'success');
             showReceiptModal(payload);
-
-            // Also sync to cloud if online
-            if (isCloudReady && db && currentUser) {
-                try {
-                    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rpm_transactions', id), payload);
-                } catch (err) {
-                    console.warn("Cloud sync delayed:", err);
-                }
-            }
         };
 
         window.openReceiptById = function(id) {
@@ -1034,7 +945,7 @@
             document.getElementById('transactionModal').classList.add('hidden');
         };
 
-        window.saveTransaction = async function(e) {
+        window.saveTransaction = function(e) {
             e.preventDefault();
 
             const existingId = document.getElementById('transId').value;
@@ -1058,14 +969,6 @@
             renderTransactions();
             closeTransactionModal();
             showToast(existingId ? 'Transaksi berhasil diperbarui!' : 'Transaksi berhasil disimpan!', 'success');
-
-            if (isCloudReady && db && currentUser) {
-                try {
-                    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rpm_transactions', id), payload);
-                } catch (err) {
-                    console.warn("Cloud sync delayed:", err);
-                }
-            }
         };
 
         window.editTransaction = function(id) {
@@ -1076,19 +979,11 @@
         };
 
         window.deleteTransaction = function(id) {
-            openConfirmModal('Apakah Anda yakin ingin menghapus catatan transaksi ini?', async () => {
+            openConfirmModal('Apakah Anda yakin ingin menghapus catatan transaksi ini?', () => {
                 transactions = transactions.filter(t => t.id !== id);
                 saveLocalTransactions();
                 renderTransactions();
                 showToast('Transaksi berhasil dihapus.', 'info');
-
-                if (isCloudReady && db && currentUser) {
-                    try {
-                        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rpm_transactions', id));
-                    } catch (err) {
-                        console.warn("Cloud delete delayed:", err);
-                    }
-                }
             });
         };
 
@@ -1171,7 +1066,7 @@
             if (!file) return;
 
             const reader = new FileReader();
-            reader.onload = async function(e) {
+            reader.onload = function(e) {
                 try {
                     const data = new Uint8Array(e.target.result);
                     const workbook = XLSX.read(data, { type: 'array' });
@@ -1196,9 +1091,6 @@
                         const item = { id, date, type, category, amount, description: String(desc) };
 
                         transactions.push(item);
-                        if (isCloudReady && db && currentUser) {
-                            await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rpm_transactions', id), item);
-                        }
                         importedCount++;
                     }
 
@@ -1317,7 +1209,7 @@
             const fileReader = new FileReader();
             if (event.target.files[0]) {
                 fileReader.readAsText(event.target.files[0], "UTF-8");
-                fileReader.onload = async (e) => {
+                fileReader.onload = (e) => {
                     try {
                         const imported = JSON.parse(e.target.result);
                         if (Array.isArray(imported)) {
@@ -1327,10 +1219,6 @@
                                 const existingIdx = transactions.findIndex(t => t.id === id);
                                 if (existingIdx !== -1) transactions[existingIdx] = record;
                                 else transactions.push(record);
-
-                                if (isCloudReady && db && currentUser) {
-                                    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rpm_transactions', id), record);
-                                }
                             }
                             saveLocalTransactions();
                             renderTransactions();
@@ -1346,36 +1234,12 @@
             }
         };
 
-        window.executeResetData = async function() {
-            const oldTransactions = [...transactions];
+        window.executeResetData = function() {
             transactions = [];
             saveLocalTransactions();
             renderTransactions();
             closeBackupModal();
             showToast('Semua data telah direset.', 'info');
-
-            if (isCloudReady && db && currentUser) {
-                try {
-                    for (const item of oldTransactions) {
-                        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rpm_transactions', item.id));
-                    }
-                } catch (err) {
-                    console.warn("Cloud reset delayed:", err);
-                }
-            }
-        };
-
-        window.executeResetData = async function() {
-            if (!db || !currentUser) return;
-            try {
-                for (const item of transactions) {
-                    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rpm_transactions', item.id));
-                }
-                closeBackupModal();
-                showToast('Semua data cloud telah direset.', 'info');
-            } catch (err) {
-                showToast('Gagal mereset data.', 'info');
-            }
         };
 
         // Custom Confirmation Modal Logic
