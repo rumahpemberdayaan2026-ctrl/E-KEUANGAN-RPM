@@ -10,6 +10,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- SheetJS for Direct Excel Export/Import -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
@@ -75,9 +77,13 @@
                 </div>
 
                 <div class="flex items-center space-x-3">
-                    <button onclick="openBackupModal()" class="hidden sm:inline-flex items-center space-x-2 px-3.5 py-2 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition">
-                        <i class="fa-solid fa-database text-slate-500"></i>
-                        <span>Data & Backup</span>
+                    <div id="cloudStatusBadge" class="hidden md:flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-semibold">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <span>Cloud Tersimpan</span>
+                    </div>
+                    <button onclick="openBackupModal()" class="inline-flex items-center space-x-2 px-3.5 py-2 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition">
+                        <i class="fa-solid fa-file-excel text-emerald-600"></i>
+                        <span class="hidden sm:inline">Excel & Backup</span>
                     </button>
                     <button onclick="handleLogout()" class="inline-flex items-center space-x-2 px-3.5 py-2 text-xs font-medium text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-xl transition">
                         <i class="fa-solid fa-right-from-bracket"></i>
@@ -143,6 +149,10 @@
             <!-- ACTION BAR & CONTROLS -->
             <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 no-print">
                 <div class="flex flex-wrap items-center gap-3">
+                    <button onclick="openDonationModal()" class="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2.5 rounded-xl text-xs font-semibold shadow-md shadow-amber-500/20 transition flex items-center space-x-2">
+                        <i class="fa-solid fa-hand-holding-heart"></i>
+                        <span>Donasi Kegiatan RPM</span>
+                    </button>
                     <button onclick="openTransactionModal('pemasukan')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs font-semibold shadow-md shadow-emerald-600/20 transition flex items-center space-x-2">
                         <i class="fa-solid fa-plus-circle"></i>
                         <span>Catat Pemasukan</span>
@@ -168,6 +178,10 @@
 
                     <!-- Export Buttons -->
                     <div class="flex items-center space-x-2 border-l border-slate-200 pl-3">
+                        <button onclick="exportToExcel()" title="Download Excel (.xlsx)" class="bg-emerald-700 hover:bg-emerald-800 text-white px-3.5 py-2.5 rounded-xl text-xs font-semibold transition flex items-center space-x-1.5 shadow-sm">
+                            <i class="fa-solid fa-file-excel text-emerald-200"></i>
+                            <span>Excel</span>
+                        </button>
                         <button onclick="exportToPDF()" title="Download PDF" class="bg-slate-800 hover:bg-slate-900 text-white px-3.5 py-2.5 rounded-xl text-xs font-semibold transition flex items-center space-x-1.5 shadow-sm">
                             <i class="fa-solid fa-file-pdf text-rose-400"></i>
                             <span class="hidden sm:inline">PDF</span>
@@ -202,7 +216,7 @@
                             <tr class="bg-slate-50 text-slate-500 text-[11px] uppercase tracking-wider border-b border-slate-200">
                                 <th class="py-3 px-4 font-semibold">Tanggal</th>
                                 <th class="py-3 px-4 font-semibold">Keterangan / Uraian</th>
-                                <th class="py-3 px-4 font-semibold">Kategori</th>
+                                <th class="py-3 px-4 font-semibold">Kategori / Metode</th>
                                 <th class="py-3 px-4 font-semibold">Jenis</th>
                                 <th class="py-3 px-4 font-semibold text-right">Nominal (Rp)</th>
                                 <th class="py-3 px-4 font-semibold text-center no-print">Aksi</th>
@@ -284,34 +298,197 @@
         </div>
     </div>
 
+    <!-- DEDICATED DONATION MODAL (QRIS / Kas / Transfer) -->
+    <div id="donationModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 border border-slate-100">
+            <div class="flex items-center justify-between pb-4 border-b border-slate-100 mb-5">
+                <div class="flex items-center space-x-2.5">
+                    <div class="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                        <i class="fa-solid fa-hand-holding-heart"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-slate-900 text-base">Input Donasi Kegiatan RPM</h3>
+                        <p class="text-[11px] text-slate-500">Otomatis tersimpan ke kas & membuat bukti ucapan terima kasih</p>
+                    </div>
+                </div>
+                <button onclick="closeDonationModal()" class="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 flex items-center justify-center transition">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <form id="donationForm" onsubmit="saveDonation(event)" class="space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">Tanggal Donasi</label>
+                        <input type="date" id="donDate" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-amber-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">Metode Donasi</label>
+                        <select id="donMethod" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500">
+                            <option value="QRIS">QRIS</option>
+                            <option value="Kas Tunai">Kas Tunai</option>
+                            <option value="Transfer Bank">Transfer Bank</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">Nama Donatur</label>
+                    <input type="text" id="donDonorName" required placeholder="Contoh: Bpk. Ahmad Fauzi / Hamba Allah" 
+                        class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-amber-500">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">Nominal Donasi (Rp)</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400 font-semibold text-xs">Rp</span>
+                        <input type="number" id="donAmount" min="1" required placeholder="Contoh: 250000" 
+                            class="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">Nama Kegiatan / Program RPM</label>
+                    <input type="text" id="donActivity" required placeholder="Contoh: Santunan Anak Yatim & Pelatihan UMKM" 
+                        class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-amber-500">
+                </div>
+
+                <div class="flex items-center justify-end space-x-3 pt-4 border-t border-slate-100">
+                    <button type="button" onclick="closeDonationModal()" class="px-4 py-2.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-xl transition">Batal</button>
+                    <button type="submit" class="px-5 py-2.5 text-xs font-semibold text-white bg-amber-500 hover:bg-amber-600 rounded-xl shadow-md shadow-amber-500/20 transition flex items-center space-x-1.5">
+                        <i class="fa-solid fa-check"></i>
+                        <span>Simpan & Buat Bukti Donasi</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- THANK YOU DONATION RECEIPT MODAL -->
+    <div id="receiptModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-emerald-100">
+            <!-- Decorative Header -->
+            <div class="bg-gradient-to-r from-emerald-600 to-teal-600 p-6 text-center text-white relative">
+                <button onclick="closeReceiptModal()" class="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 text-white flex items-center justify-center transition">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+                <div class="w-14 h-14 rounded-full bg-white text-emerald-600 flex items-center justify-center mx-auto mb-3 shadow-lg text-2xl">
+                    <i class="fa-solid fa-heart"></i>
+                </div>
+                <h3 class="text-lg font-extrabold tracking-tight">Terima Kasih Atas Donasi Anda!</h3>
+                <p class="text-xs text-emerald-100 mt-1">Rumah Pemberdayaan Masyarakat</p>
+            </div>
+
+            <!-- Receipt Details -->
+            <div class="p-6 space-y-4">
+                <div class="text-center border-b border-dashed border-slate-200 pb-4">
+                    <p class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">Total Donasi Diterima</p>
+                    <p id="recAmount" class="text-2xl font-black text-emerald-600 mt-1">Rp 0</p>
+                    <span id="recMethodBadge" class="inline-block mt-2 px-3 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-[11px] font-bold">
+                        Metode: QRIS
+                    </span>
+                </div>
+
+                <div class="space-y-2.5 text-xs">
+                    <div class="flex justify-between">
+                        <span class="text-slate-400">No. Bukti</span>
+                        <span id="recNo" class="font-mono font-semibold text-slate-700">#RPM-000</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-400">Tanggal</span>
+                        <span id="recDate" class="font-semibold text-slate-700">-</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-400">Nama Donatur</span>
+                        <span id="recDonor" class="font-bold text-slate-900">-</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-400">Untuk Kegiatan</span>
+                        <span id="recActivity" class="font-semibold text-slate-700 text-right max-w-[200px]">-</span>
+                    </div>
+                </div>
+
+                <div class="bg-slate-50 rounded-xl p-3.5 text-center border border-slate-100">
+                    <p class="text-[11px] text-slate-600 italic leading-relaxed">
+                        "Semoga kebaikan dan keikhlasan Bapak/Ibu menjadi amal jariyah yang terus mengalir serta membawa keberkahan bagi sesama. Bersama Berdaya Menuju Sejahtera."
+                    </p>
+                </div>
+
+                <div class="flex items-center gap-2.5 pt-2">
+                    <button onclick="downloadDonationReceiptPDF()" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 px-4 rounded-xl text-xs font-semibold shadow-md shadow-emerald-600/20 transition flex items-center justify-center space-x-1.5">
+                        <i class="fa-solid fa-file-pdf"></i>
+                        <span>Download Bukti PDF</span>
+                    </button>
+                    <button onclick="closeReceiptModal()" class="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition">
+                        Tutup
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- BACKUP & DATA MANAGEMENT MODAL -->
     <div id="backupModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4 hidden">
         <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 border border-slate-100 space-y-4">
             <div class="flex items-center justify-between pb-3 border-b border-slate-100">
-                <h3 class="font-bold text-slate-900 text-base">Kelola Data Sistem</h3>
+                <h3 class="font-bold text-slate-900 text-base">Ekspor Excel & Kelola Data</h3>
                 <button onclick="closeBackupModal()" class="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 flex items-center justify-center transition">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
             
-            <p class="text-xs text-slate-500">Anda dapat melakukan backup data pembukuan ke file JSON atau memulihkan data dari file sebelumnya.</p>
+            <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-800 flex items-start space-x-2.5">
+                <i class="fa-solid fa-cloud-check text-emerald-600 mt-0.5 text-sm"></i>
+                <div>
+                    <p class="font-semibold">Penyimpanan Cloud Aktif & Otomatis</p>
+                    <p class="text-[11px] text-emerald-700 mt-0.5">Setiap catatan otomatis tersimpan di server cloud. Data tidak akan hilang meski laptop dimatikan.</p>
+                </div>
+            </div>
             
-            <div class="space-y-3 pt-2">
+            <div class="space-y-2.5 pt-1">
+                <button onclick="exportToExcel()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white p-3 rounded-xl text-xs font-semibold flex items-center justify-center space-x-2 transition shadow-sm">
+                    <i class="fa-solid fa-file-excel"></i>
+                    <span>Download File Excel (.xlsx) - Siap Google Sheets</span>
+                </button>
+
+                <label class="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 p-3 rounded-xl text-xs font-semibold flex items-center justify-center space-x-2 cursor-pointer transition">
+                    <i class="fa-solid fa-file-import text-emerald-600"></i>
+                    <span>Impor Data dari Excel (.xlsx)</span>
+                    <input type="file" id="importExcelFile" accept=".xlsx, .xls" onchange="importExcelData(event)" class="hidden">
+                </label>
+
                 <button onclick="exportJSONData()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 p-3 rounded-xl text-xs font-semibold flex items-center justify-center space-x-2 transition">
-                    <i class="fa-solid fa-download text-emerald-600"></i>
-                    <span>Download Backup Data (JSON)</span>
+                    <i class="fa-solid fa-download text-slate-600"></i>
+                    <span>Download Backup Cadangan (JSON)</span>
                 </button>
                 
                 <label class="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 p-3 rounded-xl text-xs font-semibold flex items-center justify-center space-x-2 cursor-pointer transition">
                     <i class="fa-solid fa-upload text-blue-600"></i>
-                    <span>Pulihkan Data dari File</span>
+                    <span>Pulihkan dari Backup (JSON)</span>
                     <input type="file" id="importFile" accept=".json" onchange="importJSONData(event)" class="hidden">
                 </label>
                 
-                <button onclick="resetData()" class="w-full bg-rose-50 hover:bg-rose-100 text-rose-700 p-3 rounded-xl text-xs font-semibold flex items-center justify-center space-x-2 transition">
+                <button onclick="openConfirmModal('PERHATIAN: Semua data transaksi di cloud akan dihapus permanen. Lanjutkan?', () => executeResetData())" class="w-full bg-rose-50 hover:bg-rose-100 text-rose-700 p-3 rounded-xl text-xs font-semibold flex items-center justify-center space-x-2 transition">
                     <i class="fa-solid fa-triangle-exclamation"></i>
                     <span>Reset Semua Data</span>
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CUSTOM CONFIRMATION MODAL -->
+    <div id="confirmModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 border border-slate-100 space-y-4">
+            <div class="flex items-center space-x-3 text-rose-600">
+                <div class="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center flex-shrink-0">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                </div>
+                <h3 class="font-bold text-slate-900 text-base">Konfirmasi Tindakan</h3>
+            </div>
+            <p id="confirmMessage" class="text-xs text-slate-600 leading-relaxed"></p>
+            <div class="flex items-center justify-end space-x-2 pt-2">
+                <button onclick="closeConfirmModal()" class="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-xl transition">Batal</button>
+                <button id="confirmActionBtn" class="px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition">Ya, Lanjutkan</button>
             </div>
         </div>
     </div>
@@ -323,10 +500,23 @@
     </div>
 
     <!-- JAVASCRIPT LOGIC -->
-    <script>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, deleteDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Firebase Initialization
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'rpm-pembukuan-app';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        let db = null;
+        let auth = null;
+        let currentUser = null;
+        let unsubscribeSnapshot = null;
+
         // Categories definition
         const categories = {
             pemasukan: [
+                "Donasi Kegiatan RPM",
                 "Donasi Tunai / Tetap",
                 "Dana Hibah / Pemerintah",
                 "Hasil Usaha Pemberdayaan",
@@ -344,18 +534,84 @@
             ]
         };
 
-        // Default initial data if empty
+        // Default initial data if cloud is completely empty on first run
         const defaultTransactions = [
-            { id: "1", date: "2026-06-01", type: "pemasukan", category: "Dana Hibah / Pemerintah", amount: 15000000, description: "Bantuan Operasional Pemberdayaan Masyarakat Triwulan II" },
-            { id: "2", date: "2026-06-03", type: "pemasukan", category: "Donasi Tunai / Tetap", amount: 2500000, description: "Donasi hamba Allah untuk pelatihan komputer" },
-            { id: "3", date: "2026-06-05", type: "pengeluaran", category: "Operasional & Sekretariat", amount: 750000, description: "Pembayaran listrik, air, dan internet sekretariat" },
-            { id: "4", date: "2026-06-10", type: "pengeluaran", category: "Program Pelatihan & Pemberdayaan", amount: 3200000, description: "Pembelian bahan baku dan modul pelatihan menjahit" }
+            { id: "init_1", date: "2026-06-01", type: "pemasukan", category: "Dana Hibah / Pemerintah", amount: 15000000, description: "Bantuan Operasional Pemberdayaan Masyarakat Triwulan II" },
+            { id: "init_2", date: "2026-06-03", type: "pemasukan", category: "Donasi Tunai / Tetap", amount: 2500000, description: "Donasi hamba Allah untuk pelatihan komputer" },
+            { id: "init_3", date: "2026-06-05", type: "pengeluaran", category: "Operasional & Sekretariat", amount: 750000, description: "Pembayaran listrik, air, dan internet sekretariat" },
+            { id: "init_4", date: "2026-06-10", type: "pengeluaran", category: "Program Pelatihan & Pemberdayaan", amount: 3200000, description: "Pembelian bahan baku dan modul pelatihan menjahit" }
         ];
 
-        let transactions = JSON.parse(localStorage.getItem('rpm_transactions')) || defaultTransactions;
+        let transactions = [];
+        let isInitialSeedChecked = false;
+
+        async function initCloudDatabase() {
+            if (!firebaseConfig) {
+                updateCloudBadge(false);
+                return;
+            }
+            try {
+                const app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+                currentUser = auth.currentUser;
+                updateCloudBadge(true);
+                listenToTransactions();
+            } catch (error) {
+                console.error("Cloud connection error:", error);
+                updateCloudBadge(false);
+            }
+        }
+
+        function updateCloudBadge(isOnline) {
+            const badge = document.getElementById('cloudStatusBadge');
+            if (!badge) return;
+            if (isOnline) {
+                badge.className = "hidden md:flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-semibold";
+                badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span><span>Tersimpan di Cloud</span>';
+            } else {
+                badge.className = "hidden md:flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-[11px] font-semibold";
+                badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-amber-500"></span><span>Mode Offline</span>';
+            }
+        }
+
+        function listenToTransactions() {
+            if (!db || !currentUser) return;
+            const colRef = collection(db, 'artifacts', appId, 'public', 'data', 'rpm_transactions');
+            
+            if (unsubscribeSnapshot) unsubscribeSnapshot();
+            unsubscribeSnapshot = onSnapshot(colRef, async (snapshot) => {
+                const fetched = [];
+                snapshot.forEach(docSnap => {
+                    fetched.push({ id: docSnap.id, ...docSnap.data() });
+                });
+
+                if (fetched.length === 0 && !isInitialSeedChecked) {
+                    isInitialSeedChecked = true;
+                    // Seed default initial transactions once if empty
+                    for (const item of defaultTransactions) {
+                        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rpm_transactions', item.id), item);
+                    }
+                } else {
+                    isInitialSeedChecked = true;
+                    transactions = fetched;
+                    renderTransactions();
+                }
+            }, (error) => {
+                console.error("Snapshot error:", error);
+                showToast("Gagal menyinkronkan data cloud.", "info");
+            });
+        }
 
         // Check auth status on load
-        window.addEventListener('DOMContentLoaded', () => {
+        window.addEventListener('DOMContentLoaded', async () => {
+            await initCloudDatabase();
             const isLoggedIn = sessionStorage.getItem('rpm_admin_logged');
             if (isLoggedIn === 'true') {
                 showApp();
@@ -364,7 +620,7 @@
             }
         });
 
-        function handleLogin(e) {
+        window.handleLogin = function(e) {
             e.preventDefault();
             const pass = document.getElementById('adminPasswordInput').value;
             const errorEl = document.getElementById('loginError');
@@ -373,19 +629,19 @@
                 sessionStorage.setItem('rpm_admin_logged', 'true');
                 errorEl.classList.add('hidden');
                 showApp();
-                showToast('Login berhasil! Selamat datang Admin.', 'success');
+                showToast('Login berhasil! Data tersinkronisasi di Cloud.', 'success');
             } else {
                 errorEl.classList.remove('hidden');
                 document.getElementById('adminPasswordInput').focus();
             }
-        }
+        };
 
-        function handleLogout() {
+        window.handleLogout = function() {
             sessionStorage.removeItem('rpm_admin_logged');
             document.getElementById('adminPasswordInput').value = '';
             showLogin();
             showToast('Anda telah keluar dari sistem.', 'info');
-        }
+        };
 
         function showLogin() {
             document.getElementById('loginScreen').classList.remove('hidden');
@@ -412,7 +668,7 @@
             });
         }
 
-        function updateCategoryOptions() {
+        window.updateCategoryOptions = function() {
             const type = document.getElementById('transType').value;
             const catSelect = document.getElementById('transCategory');
             catSelect.innerHTML = '';
@@ -423,9 +679,9 @@
                 opt.textContent = cat;
                 catSelect.appendChild(opt);
             });
-        }
+        };
 
-        function renderTransactions() {
+        window.renderTransactions = function() {
             const tbody = document.getElementById('transactionTableBody');
             const emptyState = document.getElementById('emptyState');
             const searchVal = document.getElementById('searchInput').value.toLowerCase();
@@ -435,7 +691,7 @@
             tbody.innerHTML = '';
 
             let filtered = transactions.filter(t => {
-                const matchSearch = t.description.toLowerCase().includes(searchVal) || t.category.toLowerCase().includes(searchVal);
+                const matchSearch = (t.description || '').toLowerCase().includes(searchVal) || (t.category || '').toLowerCase().includes(searchVal);
                 const matchCat = filterCat === 'all' || t.category === filterCat;
                 const matchType = filterType === 'all' || t.type === filterType;
                 return matchSearch && matchCat && matchType;
@@ -455,11 +711,16 @@
                     const formattedDate = new Date(t.date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
                     const formattedAmount = Number(t.amount).toLocaleString('id-ID');
                     const isIncome = t.type === 'pemasukan';
+                    const isDonation = t.isDonation || t.category === 'Donasi Kegiatan RPM';
+                    const methodBadge = t.paymentMethod ? `<span class="ml-1 bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-md text-[10px] font-bold">${escapeHtml(t.paymentMethod)}</span>` : '';
 
                     tr.innerHTML = `
                         <td class="py-3.5 px-4 whitespace-nowrap text-slate-500 font-medium">${formattedDate}</td>
                         <td class="py-3.5 px-4 font-medium text-slate-800 max-w-xs truncate" title="${escapeHtml(t.description)}">${escapeHtml(t.description)}</td>
-                        <td class="py-3.5 px-4 text-slate-600"><span class="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-lg text-[11px] font-medium">${escapeHtml(t.category)}</span></td>
+                        <td class="py-3.5 px-4 text-slate-600">
+                            <span class="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-lg text-[11px] font-medium">${escapeHtml(t.category)}</span>
+                            ${methodBadge}
+                        </td>
                         <td class="py-3.5 px-4 whitespace-nowrap">
                             <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold ${isIncome ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}">
                                 <i class="fa-solid ${isIncome ? 'fa-arrow-down mr-1' : 'fa-arrow-up mr-1'}"></i> ${isIncome ? 'Pemasukan' : 'Pengeluaran'}
@@ -469,6 +730,7 @@
                             ${isIncome ? '+' : '-'} Rp ${formattedAmount}
                         </td>
                         <td class="py-3.5 px-4 text-center whitespace-nowrap no-print">
+                            ${isDonation ? `<button onclick="openReceiptById('${t.id}')" class="w-8 h-8 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 transition inline-flex items-center justify-center mr-1" title="Bukti Terima Kasih Donasi"><i class="fa-solid fa-receipt text-[11px]"></i></button>` : ''}
                             <button onclick="editTransaction('${t.id}')" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition inline-flex items-center justify-center mr-1" title="Edit">
                                 <i class="fa-solid fa-pen text-[11px]"></i>
                             </button>
@@ -482,7 +744,196 @@
             }
 
             updateStats();
+        };
+
+        // Dedicated Donation Modal & Receipt Logic
+        let currentReceiptData = null;
+
+        window.openDonationModal = function() {
+            const form = document.getElementById('donationForm');
+            form.reset();
+            document.getElementById('donDate').value = new Date().toISOString().split('T')[0];
+            document.getElementById('donationModal').classList.remove('hidden');
+        };
+
+        window.closeDonationModal = function() {
+            document.getElementById('donationModal').classList.add('hidden');
+        };
+
+        window.saveDonation = async function(e) {
+            e.preventDefault();
+            if (!db || !currentUser) {
+                showToast('Koneksi cloud belum siap, silakan tunggu sebentar.', 'info');
+                return;
+            }
+
+            const id = 'DON-' + Date.now().toString();
+            const date = document.getElementById('donDate').value;
+            const paymentMethod = document.getElementById('donMethod').value;
+            const donorName = document.getElementById('donDonorName').value.trim();
+            const amount = parseFloat(document.getElementById('donAmount').value);
+            const activity = document.getElementById('donActivity').value.trim();
+
+            const description = `Donasi Kegiatan (${activity}) - Donatur: ${donorName} [${paymentMethod}]`;
+            const payload = {
+                id,
+                type: 'pemasukan',
+                date,
+                category: 'Donasi Kegiatan RPM',
+                amount,
+                description,
+                isDonation: true,
+                donorName,
+                activity,
+                paymentMethod
+            };
+
+            try {
+                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rpm_transactions', id), payload);
+                closeDonationModal();
+                showToast('Donasi berhasil disimpan ke Cloud!', 'success');
+                showReceiptModal(payload);
+            } catch (err) {
+                console.error("Save donation error:", err);
+                showToast('Gagal menyimpan data donasi.', 'info');
+            }
+        };
+
+        window.openReceiptById = function(id) {
+            const item = transactions.find(t => t.id === id);
+            if (item) {
+                showReceiptModal(item);
+            }
+        };
+
+        function showReceiptModal(data) {
+            currentReceiptData = data;
+            const donor = data.donorName || data.description;
+            const activity = data.activity || 'Kegiatan Rumah Pemberdayaan Masyarakat';
+            const method = data.paymentMethod || 'Kas / Transfer';
+
+            document.getElementById('recNo').textContent = '#' + data.id.slice(-8).toUpperCase();
+            document.getElementById('recDate').textContent = new Date(data.date).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
+            document.getElementById('recDonor').textContent = donor;
+            document.getElementById('recActivity').textContent = activity;
+            document.getElementById('recAmount').textContent = 'Rp ' + Number(data.amount).toLocaleString('id-ID');
+            document.getElementById('recMethodBadge').textContent = 'Metode: ' + method;
+
+            document.getElementById('receiptModal').classList.remove('hidden');
         }
+
+        window.closeReceiptModal = function() {
+            document.getElementById('receiptModal').classList.add('hidden');
+        };
+
+        window.downloadDonationReceiptPDF = function() {
+            if (!currentReceiptData) return;
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF('p', 'mm', 'a5'); // A5 size ideal for official receipt
+
+            const logoImg = new Image();
+            logoImg.src = 'Logo_Rumah_Pemberdayaan_Masyarakat__1_-removebg-preview(1).png';
+
+            const renderReceiptPDF = () => {
+                // Header Border
+                doc.setDrawColor(16, 185, 129);
+                doc.setLineWidth(0.8);
+                doc.rect(8, 8, 132, 194);
+
+                doc.setFont("helvetica", "bold");
+                doc.setFontSize(13);
+                doc.setTextColor(16, 185, 129);
+                doc.text("BUKTI TERIMA KASIH DONASI", 74, 34, { align: "center" });
+
+                doc.setFont("helvetica", "normal");
+                doc.setFontSize(8.5);
+                doc.setTextColor(100, 116, 139);
+                doc.text("Rumah Pemberdayaan Masyarakat", 74, 40, { align: "center" });
+                doc.text("Bersama Berdaya Menuju Sejahtera", 74, 45, { align: "center" });
+
+                doc.setDrawColor(226, 232, 240);
+                doc.line(16, 50, 132, 50);
+
+                const donor = currentReceiptData.donorName || currentReceiptData.description;
+                const activity = currentReceiptData.activity || 'Kegiatan Sosial & Pemberdayaan RPM';
+                const method = currentReceiptData.paymentMethod || 'Kas / Transfer';
+                const formattedDate = new Date(currentReceiptData.date).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
+
+                doc.setFontSize(9.5);
+                doc.setTextColor(30, 41, 59);
+
+                let y = 60;
+                doc.setFont("helvetica", "normal");
+                doc.text("No. Kwitansi", 18, y);
+                doc.setFont("helvetica", "bold");
+                doc.text(": #" + currentReceiptData.id.slice(-8).toUpperCase(), 55, y);
+
+                y += 9;
+                doc.setFont("helvetica", "normal");
+                doc.text("Tanggal", 18, y);
+                doc.setFont("helvetica", "bold");
+                doc.text(": " + formattedDate, 55, y);
+
+                y += 9;
+                doc.setFont("helvetica", "normal");
+                doc.text("Telah Terima Dari", 18, y);
+                doc.setFont("helvetica", "bold");
+                doc.text(": " + donor, 55, y);
+
+                y += 9;
+                doc.setFont("helvetica", "normal");
+                doc.text("Metode Donasi", 18, y);
+                doc.setFont("helvetica", "bold");
+                doc.text(": " + method, 55, y);
+
+                y += 9;
+                doc.setFont("helvetica", "normal");
+                doc.text("Untuk Kegiatan", 18, y);
+                doc.setFont("helvetica", "bold");
+                const splitActivity = doc.splitTextToSize(": " + activity, 75);
+                doc.text(splitActivity, 55, y);
+
+                y += (splitActivity.length * 6) + 8;
+                // Amount Box
+                doc.setFillColor(236, 253, 245);
+                doc.roundedRect(18, y, 112, 18, 3, 3, 'F');
+                doc.setFont("helvetica", "bold");
+                doc.setFontSize(12);
+                doc.setTextColor(5, 150, 105);
+                doc.text("NOMINAL: Rp " + Number(currentReceiptData.amount).toLocaleString('id-ID'), 74, y + 11.5, { align: "center" });
+
+                y += 28;
+                doc.setFont("helvetica", "italic");
+                doc.setFontSize(8.5);
+                doc.setTextColor(71, 85, 105);
+                const thanksText = doc.splitTextToSize(
+                    "Terima kasih atas kepercayaan dan kepedulian Bapak/Ibu. Semoga kebaikan ini menjadi amal jariyah yang terus mengalir serta membawa keberkahan bagi sesama.",
+                    110
+                );
+                doc.text(thanksText, 74, y, { align: "center" });
+
+                y += 24;
+                doc.setFont("helvetica", "normal");
+                doc.setFontSize(8.5);
+                doc.text("Pengurus Rumah Pemberdayaan Masyarakat", 128, y, { align: "right" });
+                y += 14;
+                doc.setFont("helvetica", "bold");
+                doc.text("( Administrator Keuangan RPM )", 128, y, { align: "right" });
+
+                doc.save(`Bukti_Donasi_RPM_${donor.replace(/\s+/g, '_')}.pdf`);
+                showToast('Bukti Ucapan Terima Kasih PDF berhasil diunduh!', 'success');
+            };
+
+            logoImg.onload = function() {
+                try {
+                    doc.addImage(logoImg, 'PNG', 52, 11, 44, 15);
+                } catch (e) {}
+                renderReceiptPDF();
+            };
+            logoImg.onerror = function() {
+                renderReceiptPDF();
+            };
+        };
 
         function updateStats() {
             let totalInc = 0;
@@ -508,7 +959,7 @@
             }
         }
 
-        function openTransactionModal(type = 'pemasukan', id = null) {
+        window.openTransactionModal = function(type = 'pemasukan', id = null) {
             const modal = document.getElementById('transactionModal');
             const title = document.getElementById('modalTitle');
             const form = document.getElementById('transactionForm');
@@ -516,7 +967,6 @@
             form.reset();
             document.getElementById('transId').value = '';
             
-            // Set today date as default
             const today = new Date().toISOString().split('T')[0];
             document.getElementById('transDate').value = today;
             document.getElementById('transType').value = type;
@@ -540,88 +990,198 @@
             }
 
             modal.classList.remove('hidden');
-        }
+        };
 
-        function closeTransactionModal() {
+        window.closeTransactionModal = function() {
             document.getElementById('transactionModal').classList.add('hidden');
-        }
+        };
 
-        function saveTransaction(e) {
+        window.saveTransaction = async function(e) {
             e.preventDefault();
-            const id = document.getElementById('transId').value;
+            if (!db || !currentUser) {
+                showToast('Koneksi cloud belum siap, silakan tunggu sebentar.', 'info');
+                return;
+            }
+
+            const existingId = document.getElementById('transId').value;
+            const id = existingId || Date.now().toString();
             const type = document.getElementById('transType').value;
             const date = document.getElementById('transDate').value;
             const category = document.getElementById('transCategory').value;
             const amount = parseFloat(document.getElementById('transAmount').value);
             const description = document.getElementById('transDescription').value;
 
-            if (id) {
-                // Edit existing
-                const index = transactions.findIndex(t => t.id === id);
-                if (index !== -1) {
-                    transactions[index] = { id, type, date, category, amount, description };
-                }
-                showToast('Transaksi berhasil diperbarui!', 'success');
-            } else {
-                // Add new
-                const newT = {
-                    id: Date.now().toString(),
-                    type, date, category, amount, description
-                };
-                transactions.push(newT);
-                showToast('Transaksi berhasil dicatat!', 'success');
+            const payload = { id, type, date, category, amount, description };
+
+            try {
+                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rpm_transactions', id), payload);
+                closeTransactionModal();
+                showToast(existingId ? 'Transaksi berhasil diperbarui di Cloud!' : 'Transaksi berhasil disimpan permanen di Cloud!', 'success');
+            } catch (err) {
+                console.error("Save error:", err);
+                showToast('Gagal menyimpan ke cloud.', 'info');
             }
+        };
 
-            saveToLocalStorage();
-            closeTransactionModal();
-            renderTransactions();
-        }
-
-        function editTransaction(id) {
+        window.editTransaction = function(id) {
             const t = transactions.find(item => item.id === id);
             if (t) {
                 openTransactionModal(t.type, id);
             }
-        }
+        };
 
-        function deleteTransaction(id) {
-            if (confirm('Apakah Anda yakin ingin menghapus catatan transaksi ini?')) {
-                transactions = transactions.filter(t => t.id !== id);
-                saveToLocalStorage();
-                renderTransactions();
-                showToast('Transaksi berhasil dihapus.', 'info');
+        window.deleteTransaction = function(id) {
+            openConfirmModal('Apakah Anda yakin ingin menghapus catatan transaksi ini dari Cloud?', async () => {
+                if (!db || !currentUser) return;
+                try {
+                    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rpm_transactions', id));
+                    showToast('Transaksi berhasil dihapus.', 'info');
+                } catch (err) {
+                    console.error("Delete error:", err);
+                    showToast('Gagal menghapus transaksi.', 'info');
+                }
+            });
+        };
+
+        // Direct Excel (.xlsx) Export using SheetJS
+        window.exportToExcel = function() {
+            if (typeof XLSX === 'undefined') {
+                showToast('Library Excel sedang dimuat, coba lagi sesaat.', 'info');
+                return;
             }
-        }
 
-        function saveToLocalStorage() {
-            localStorage.setItem('rpm_transactions', JSON.stringify(transactions));
-        }
+            const sorted = [...transactions].sort((a, b) => new Date(b.date) - new Date(a.date));
+            
+            let totalInc = 0;
+            let totalExp = 0;
+            sorted.forEach(t => {
+                if (t.type === 'pemasukan') totalInc += Number(t.amount);
+                else totalExp += Number(t.amount);
+            });
+
+            // Build structured rows for Excel
+            const excelRows = sorted.map((t, index) => ({
+                "No": index + 1,
+                "Tanggal": t.date,
+                "Keterangan / Uraian": t.description,
+                "Kategori": t.category,
+                "Metode": t.paymentMethod || "-",
+                "Jenis": t.type === 'pemasukan' ? 'Pemasukan' : 'Pengeluaran',
+                "Pemasukan (Rp)": t.type === 'pemasukan' ? Number(t.amount) : 0,
+                "Pengeluaran (Rp)": t.type === 'pengeluaran' ? Number(t.amount) : 0
+            }));
+
+            // Add Summary Footer Rows
+            excelRows.push({});
+            excelRows.push({
+                "No": "",
+                "Tanggal": "",
+                "Keterangan / Uraian": "TOTAL KESELURUHAN",
+                "Kategori": "",
+                "Metode": "",
+                "Jenis": "",
+                "Pemasukan (Rp)": totalInc,
+                "Pengeluaran (Rp)": totalExp
+            });
+            excelRows.push({
+                "No": "",
+                "Tanggal": "",
+                "Keterangan / Uraian": "SALDO KAS AKHIR",
+                "Kategori": "",
+                "Metode": "",
+                "Jenis": "",
+                "Pemasukan (Rp)": totalInc - totalExp,
+                "Pengeluaran (Rp)": ""
+            });
+
+            const worksheet = XLSX.utils.json_to_sheet(excelRows);
+            
+            // Set column widths for clean appearance in Excel & Google Sheets
+            worksheet['!cols'] = [
+                { wch: 6 },
+                { wch: 14 },
+                { wch: 45 },
+                { wch: 28 },
+                { wch: 16 },
+                { wch: 15 },
+                { wch: 18 },
+                { wch: 18 }
+            ];
+
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Buku Kas RPM");
+            
+            const fileName = `Pembukuan_RPM_${new Date().toISOString().split('T')[0]}.xlsx`;
+            XLSX.writeFile(workbook, fileName);
+            showToast('File Excel (.xlsx) berhasil diunduh! Siap dibuka di Excel / Google Sheets.', 'success');
+        };
+
+        // Import from Excel (.xlsx)
+        window.importExcelData = function(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = async function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const rows = XLSX.utils.sheet_to_json(worksheet);
+
+                    let importedCount = 0;
+                    for (const row of rows) {
+                        const desc = row["Keterangan / Uraian"];
+                        if (!desc || desc === "TOTAL KESELURUHAN" || desc === "SALDO KAS AKHIR") continue;
+
+                        const inc = Number(row["Pemasukan (Rp)"] || 0);
+                        const exp = Number(row["Pengeluaran (Rp)"] || 0);
+                        const amount = inc > 0 ? inc : exp;
+                        if (amount <= 0) continue;
+
+                        const type = inc > 0 ? 'pemasukan' : 'pengeluaran';
+                        const date = row["Tanggal"] || new Date().toISOString().split('T')[0];
+                        const category = row["Kategori"] || (type === 'pemasukan' ? 'Lain-lain (Pemasukan)' : 'Lain-lain (Pengeluaran)');
+                        const id = (Date.now() + importedCount).toString();
+
+                        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rpm_transactions', id), {
+                            id, date, type, category, amount, description: String(desc)
+                        });
+                        importedCount++;
+                    }
+
+                    closeBackupModal();
+                    showToast(`${importedCount} data dari Excel berhasil diimpor ke Cloud!`, 'success');
+                } catch (err) {
+                    console.error("Excel import error:", err);
+                    showToast('Gagal membaca file Excel. Pastikan format sesuai.', 'info');
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        };
 
         // PDF Export using jsPDF & AutoTable
-        function exportToPDF() {
+        window.exportToPDF = function() {
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF('p', 'mm', 'a4');
 
-            // Add Logo to PDF Header
             const logoImg = new Image();
             logoImg.src = 'Logo_Rumah_Pemberdayaan_Masyarakat__1_-removebg-preview(1).png';
             
             logoImg.onload = function() {
                 try {
                     doc.addImage(logoImg, 'PNG', 14, 12, 45, 16);
-                } catch(e) {
-                    // Fallback text if image fails
-                }
+                } catch(e) {}
                 generatePDFContent(doc);
             };
 
             logoImg.onerror = function() {
                 generatePDFContent(doc);
             };
-        }
+        };
 
         function generatePDFContent(doc) {
-            // Header Info below logo
             doc.setFont("helvetica", "bold");
             doc.setFontSize(14);
             doc.text("LAPORAN KEUANGAN & BUKU KAS", 65, 20);
@@ -631,11 +1191,9 @@
             doc.text("Rumah Pemberdayaan Masyarakat - Bersama Berdaya Menuju Sejahtera", 65, 26);
             doc.text("Tanggal Cetak: " + new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }), 65, 32);
 
-            // Divider line
             doc.setDrawColor(200, 200, 200);
             doc.line(14, 38, 196, 38);
 
-            // Summary Info
             let totalInc = 0;
             let totalExp = 0;
             transactions.forEach(t => {
@@ -650,7 +1208,6 @@
             doc.text(`Total Pengeluaran: Rp ${totalExp.toLocaleString('id-ID')}`, 80, 46);
             doc.text(`Saldo Akhir: Rp ${balance.toLocaleString('id-ID')}`, 146, 46);
 
-            // Table Data Construction
             const sorted = [...transactions].sort((a, b) => new Date(b.date) - new Date(a.date));
             const tableRows = sorted.map((t, index) => [
                 index + 1,
@@ -666,33 +1223,33 @@
                 head: [['No', 'Tanggal', 'Keterangan', 'Kategori', 'Jenis', 'Nominal (Rp)']],
                 body: tableRows,
                 theme: 'grid',
-                headStyles: { fillColor: [16, 185, 129] }, // Emerald color
-                styles: { fontSize: 8, cellPadding: 3 },
+                margin: { left: 14, right: 14 },
+                headStyles: { fillColor: [16, 185, 129] },
+                styles: { fontSize: 8, cellPadding: 3, overflow: 'linebreak' },
                 columnStyles: {
                     0: { cellWidth: 10 },
                     1: { cellWidth: 22 },
-                    2: { cellWidth: 60 },
-                    3: { cellWidth: 38 },
+                    2: { cellWidth: 56 },
+                    3: { cellWidth: 36 },
                     4: { cellWidth: 22 },
-                    5: { cellWidth: 38, halign: 'right' }
+                    5: { cellWidth: 36, halign: 'right' }
                 }
             });
 
-            // Save PDF
             doc.save(`Laporan_Keuangan_RPM_${new Date().toISOString().split('T')[0]}.pdf`);
             showToast('Laporan PDF berhasil diunduh!', 'success');
         }
 
         // Backup & JSON data management
-        function openBackupModal() {
+        window.openBackupModal = function() {
             document.getElementById('backupModal').classList.remove('hidden');
-        }
+        };
 
-        function closeBackupModal() {
+        window.closeBackupModal = function() {
             document.getElementById('backupModal').classList.add('hidden');
-        }
+        };
 
-        function exportJSONData() {
+        window.exportJSONData = function() {
             const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(transactions, null, 2));
             const downloadAnchor = document.createElement('a');
             downloadAnchor.setAttribute("href", dataStr);
@@ -700,41 +1257,63 @@
             document.body.appendChild(downloadAnchor);
             downloadAnchor.click();
             downloadAnchor.remove();
-            showToast('Backup data berhasil diunduh!', 'success');
-        }
+            showToast('Backup JSON berhasil diunduh!', 'success');
+        };
 
-        function importJSONData(event) {
+        window.importJSONData = function(event) {
             const fileReader = new FileReader();
             if (event.target.files[0]) {
                 fileReader.readAsText(event.target.files[0], "UTF-8");
-                fileReader.onload = (e) => {
+                fileReader.onload = async (e) => {
                     try {
                         const imported = JSON.parse(e.target.result);
-                        if (Array.isArray(imported)) {
-                            transactions = imported;
-                            saveToLocalStorage();
-                            renderTransactions();
+                        if (Array.isArray(imported) && db && currentUser) {
+                            for (const item of imported) {
+                                const id = item.id || Date.now().toString();
+                                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rpm_transactions', id), { ...item, id });
+                            }
                             closeBackupModal();
-                            showToast('Data berhasil dipulihkan!', 'success');
+                            showToast('Data berhasil dipulihkan ke Cloud!', 'success');
                         } else {
-                            alert('Format file JSON tidak valid.');
+                            showToast('Format file JSON tidak valid.', 'info');
                         }
                     } catch (err) {
-                        alert('Gagal membaca file JSON.');
+                        showToast('Gagal membaca file JSON.', 'info');
                     }
                 };
             }
-        }
+        };
 
-        function resetData() {
-            if (confirm('PERHATIAN: Semua data transaksi akan dihapus permanen. Lanjutkan?')) {
-                transactions = [];
-                saveToLocalStorage();
-                renderTransactions();
+        window.executeResetData = async function() {
+            if (!db || !currentUser) return;
+            try {
+                for (const item of transactions) {
+                    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rpm_transactions', item.id));
+                }
                 closeBackupModal();
-                showToast('Semua data telah direset.', 'info');
+                showToast('Semua data cloud telah direset.', 'info');
+            } catch (err) {
+                showToast('Gagal mereset data.', 'info');
             }
-        }
+        };
+
+        // Custom Confirmation Modal Logic
+        let pendingConfirmCallback = null;
+        window.openConfirmModal = function(message, callback) {
+            document.getElementById('confirmMessage').textContent = message;
+            pendingConfirmCallback = callback;
+            document.getElementById('confirmModal').classList.remove('hidden');
+        };
+
+        window.closeConfirmModal = function() {
+            document.getElementById('confirmModal').classList.add('hidden');
+            pendingConfirmCallback = null;
+        };
+
+        document.getElementById('confirmActionBtn').addEventListener('click', () => {
+            if (pendingConfirmCallback) pendingConfirmCallback();
+            closeConfirmModal();
+        });
 
         // Toast Helper
         function showToast(message, type = 'success') {
@@ -752,12 +1331,13 @@
             toast.classList.remove('translate-y-20', 'opacity-0');
             setTimeout(() => {
                 toast.classList.add('translate-y-20', 'opacity-0');
-            }, 3000);
+            }, 3500);
         }
 
         function escapeHtml(text) {
+            if (!text) return '';
             const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
-            return text.replace(/[&<>"']/g, m => map[m]);
+            return String(text).replace(/[&<>"']/g, m => map[m]);
         }
     </script>
 </body>
